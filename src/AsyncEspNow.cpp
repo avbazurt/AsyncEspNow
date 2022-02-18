@@ -20,6 +20,11 @@ bool status_send;
 //Semaphoro
 SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting( 1, 0 );
 
+//Estructura de los mensajes
+struct ESPNOW_mensaje {
+  const uint8_t *_address;
+  char *msg;
+};
 
 
 AsyncEspNow::AsyncEspNow(String name)
@@ -45,9 +50,8 @@ AsyncEspNow::AsyncEspNow(String name)
 }
 
 
-void AsyncEspNow::formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
+void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 {
-  snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
 }
 
 
@@ -69,14 +73,6 @@ void AsyncEspNow::sentCallback(const uint8_t *macAddr, esp_now_send_status_t sta
 
   log_i("Se libera el semaphore");
   xSemaphoreGive(SendDataSemaphore);
-
-  //TimerHandle_t _timer_activarMezclador;
-  //AsyncEspNow->SendDataSemaphore;
-  //AsyncEspNow *self = (AsyncEspNow *)pvTimerGetTimerID(_timer_activarMezclador);
-  //AsyncEspNow *self = (AsyncEspNow *);
-
-  //xSemaphoreGive((AsyncEspNow *).SendDataSemaphore);
-
 }
 
 
@@ -131,29 +127,56 @@ void AsyncEspNow::_task_sendData(void *pvParameters) {
 
 
 
+
+
+
+
 /*-------------------------------------------------------------------------------------------------------*/
 /*---------------------------------------------- RECIVE DATA ---------------------------------------------*/
 /*-------------------------------------------------------------------------------------------------------*/
 
-
-
 void AsyncEspNow::receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {
   // only allow a maximum of 250 characters in the message + a null terminating byte
+
   char buffer[ESP_NOW_MAX_DATA_LEN + 1];
   int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
   strncpy(buffer, (const char *)data, msgLen);
   // make sure we are null terminated
   buffer[msgLen] = 0;
   // format the mac address
-  char macStr[18];
-  formatMacAddress(macAddr, macStr, 18);
+
+  ESPNOW_mensaje msg= {macAddr,buffer}; 
+
+  xTaskCreatePinnedToCore(
+    _task_reciveData,        //Function to implement the task
+    "httpsTask",            //Name of the task
+    5000,                   //Stack size in words
+    (void *) &msg,                   //Task input parameter
+    2,                      //Priority of the task
+    NULL,      //Task handle.
+    CORE_ESP);              //Core where the task should run
 
 
-  // debug log the message to the serial port
-  punteroCallback(macStr, buffer);
+
 }
 
+
+void AsyncEspNow::_task_reciveData(void *pvParameters) {
+  // debug log the message to the serial port
+  ESPNOW_mensaje * mensaje = (ESPNOW_mensaje *) pvParameters;
+
+  //Le damos formato a nuestra MAC
+  char macStr[18];
+  snprintf(macStr, 18, "%02x:%02x:%02x:%02x:%02x:%02x", mensaje->_address[0], mensaje->_address[1], mensaje->_address[2], mensaje->_address[3], mensaje->_address[4], mensaje->_address[5]);
+
+  //Enviamos la informacion all Callback del usuario
+  punteroCallback(macStr, mensaje->msg);
+  vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
+  
+  //Anulamos La tarea
+  vTaskDelete(NULL);
+}
 
 
 void AsyncEspNow::setReciveCallback(void (*puntero)(char MAC[], char text[]))
@@ -162,9 +185,9 @@ void AsyncEspNow::setReciveCallback(void (*puntero)(char MAC[], char text[]))
 }
 
 
-/*-------------------------------------------------------*/
-/*---------------------- RECIVE DATA ---------------------*/
-/*--------------------------------------------------------*/
+/*-------------------------------------------------------------------------------------------------------*/
+/*---------------------------------------------- SCANER ESP ---------------------------------------------*/
+/*-------------------------------------------------------------------------------------------------------*/
 
 
 void AsyncEspNow::begin()
@@ -180,12 +203,9 @@ void AsyncEspNow::begin()
     ESP.restart();
   }
 
-  esp_now_register_send_cb(sentCallback);
-  //esp_now_register_recv_cb(receiveCallback);
-
+  esp_now_register_send_cb(this->sentCallback);
+  esp_now_register_recv_cb(this->receiveCallback);
 }
-
-
 
 
 
