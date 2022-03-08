@@ -5,6 +5,11 @@
 #include <ArduinoJson.h>
 
 
+// Global copy of slave
+#define NUMSLAVES 20
+#define CHANNEL 3
+
+
 struct structReciveData {
   uint8_t macAddr;
   uint8_t data;
@@ -16,9 +21,17 @@ struct structReciveData {
 class AsyncEspNow
 {
   private:
-
     //Variable guardar name
     String nameGroup;
+
+    //Struct Message
+    struct NowMessage{
+      esp_now_peer_info_t now_peer = {};
+      String message = "";
+    };
+
+    //Estructura a utilizar en Send Data
+    NowMessage NowMessageSend;
 
 
     //Variables a utilizar en Send Data
@@ -42,10 +55,7 @@ class AsyncEspNow
 
     // Callbacks de timers - NO LLAMAR DIRECTAMENTE
     static void _task_sendData(void *pvParameters);
-
-
     static void _task_reciveData(void *pvParameters);
-
 
 
 
@@ -59,16 +69,28 @@ class AsyncEspNow
     //Funcion para designar la funcion CallBack
     static void setReciveCallback(void (*puntero)(char MAC[], char text[]));
 
-    esp_now_peer_info_t *dispositivos;
+    //Funcion para enviar Mensaje por ESPnow
+    bool sendMessage(uint8_t peerAddress[], const String &message);
+
+
 
     bool sentData(uint8_t peerAddress[], const String &message);
+    
+
+    // Data to Scaner
+    int SlaveCnt = 0;
+    esp_now_peer_info_t slaves_devices[NUMSLAVES] = {};
+
+    // Funciones por Escaner
     void ScanForSlave();
+    
+    uint16_t sentAllData(String msg);
+
 
     //Callback
     friend void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength);
     
     static void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
-    
     
     static void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
 
