@@ -10,12 +10,14 @@
 #error CORE no disponible para board objetivo!
 #endif
 
+
+
+
 // Puntero Callback
 void (*punteroCallback)(char MAC[], char text[]);
 bool status_send;
 
 // Semaphoro
-SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting(1, 0);
 
 // Estructura de los mensajes
 struct ESPNOW_mensaje
@@ -23,6 +25,9 @@ struct ESPNOW_mensaje
   const uint8_t *_address;
   char *msg;
 };
+
+// Semaphoro
+SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting(1, 0);
 
 AsyncEspNow::AsyncEspNow(String name)
 {
@@ -57,10 +62,10 @@ void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 
 void AsyncEspNow::sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
 {
-  //MacStr
+  // MacStr
   char macStr[18];
-  
-  //formatMacAddress
+
+  // formatMacAddress
   snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
            macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
 
@@ -69,12 +74,51 @@ void AsyncEspNow::sentCallback(const uint8_t *macAddr, esp_now_send_status_t sta
   log_i("Last Packet Sent to: %s", macStr);
   log_i("Last Packet Send Status: %s", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 
-  log_i("Se libera el semaphore");
   xSemaphoreGive(SendDataSemaphore);
 }
 
-bool AsyncEspNow::sentData(uint8_t peerAddress[], const String &message)
+void AsyncEspNow::_task_sendData(void *pvParameters)
 {
+  // Variable que toma la estructura
+  NowMessage *NowMessageSend = (NowMessage *)pvParameters;
+
+  if (!esp_now_is_peer_exist(NowMessageSend->now_peer.peer_addr))
+  {
+    esp_now_add_peer(&NowMessageSend->now_peer);
+  }
+
+  esp_err_t result = esp_now_send(NowMessageSend->now_peer.peer_addr, (const uint8_t *)NowMessageSend->message.c_str(), NowMessageSend->message.length());
+  vTaskDelay(750); // one tick delay (15ms) in between reads for stability
+}
+
+
+bool AsyncEspNow::sentData(NowMessage NowMessageSend)
+{
+  // Iniciamos la tarea
+  xTaskCreatePinnedToCore(
+      this->_task_sendData,    // Function to implement the task
+      "httpsTask",             // Name of the task
+      5000,                    // Stack size in words
+      (void *)&NowMessageSend, // Task input parameter
+      2,                       // Priority of the task
+      &TaskHandSendData,       // Task handle.
+      CORE_ESP);               // Core where the task should run
+
+  log_d("Inicia el semaphore esperando");
+  xSemaphoreTake(SendDataSemaphore, portMAX_DELAY);
+  log_d("Se libera el semaphore");
+
+  //Eliminamos la tarea
+  vTaskDelete(TaskHandSendData);
+  return status_send;
+}
+
+
+bool AsyncEspNow::sendMessage(uint8_t peerAddress[], const String &message)
+{
+  // Creo una structura
+  NowMessage NowMessageSend;
+
   // Asigno los nuevos valores al Struct
   for (int ii = 0; ii < 6; ++ii)
   {
@@ -82,44 +126,16 @@ bool AsyncEspNow::sentData(uint8_t peerAddress[], const String &message)
   }
   NowMessageSend.now_peer.encrypt = 0;
 
-  // Copiamos la informacion
+  // Copiamos la informacion del mensaje
   NowMessageSend.message = message;
 
-  // Iniciamos la tarea
-  log_i("Iniciar RTOS");
-  xTaskCreatePinnedToCore(
-      this->_task_sendData, // Function to implement the task
-      "httpsTask",          // Name of the task
-      5000,                 // Stack size in words
-      this,                 // Task input parameter
-      2,                    // Priority of the task
-      &TaskHandSendData,    // Task handle.
-      CORE_ESP);            // Core where the task should run
+  // Enviamos la data
+  bool status_send = sentData(NowMessageSend);
 
-  log_i("Inicia el semaphore esperando");
-  xSemaphoreTake(SendDataSemaphore, portMAX_DELAY);
-  log_i("Se termina la tarea");
   return status_send;
 }
 
-void AsyncEspNow::_task_sendData(void *pvParameters)
-{
-  // Variable que toma todas las demas variables
 
-  AsyncEspNow *l_pThis = (AsyncEspNow *)pvParameters;
-
-  if (!esp_now_is_peer_exist(l_pThis->NowMessageSend.now_peer.peer_addr))
-  {
-    esp_now_add_peer(&l_pThis->NowMessageSend.now_peer);
-  }
-
-  esp_err_t result = esp_now_send(l_pThis->NowMessageSend.now_peer.peer_addr, (const uint8_t *)l_pThis->NowMessageSend.message.c_str(), l_pThis->NowMessageSend.message.length());
-  vTaskDelay(500); // one tick delay (15ms) in between reads for stability
-  log_i("Se envio Data");
-
-  vTaskDelay(100); // one tick delay (15ms) in between reads for stability
-  vTaskDelete(l_pThis->TaskHandSendData);
-}
 
 /*-------------------------------------------------------------------------------------------------------*/
 /*---------------------------------------------- RECIVE DATA ---------------------------------------------*/
@@ -128,7 +144,6 @@ void AsyncEspNow::_task_sendData(void *pvParameters)
 void AsyncEspNow::receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {
   // only allow a maximum of 250 characters in the message + a null terminating byte
-
   char buffer[ESP_NOW_MAX_DATA_LEN + 1];
   int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
   strncpy(buffer, (const char *)data, msgLen);
@@ -195,24 +210,20 @@ void AsyncEspNow::begin()
 /*---------------------------------------------- SCANER ESP ---------------------------------------------*/
 /*-------------------------------------------------------------------------------------------------------*/
 
-// Scan for slaves in AP mode
-void AsyncEspNow::ScanForSlave()
+int AsyncEspNow::ScanForSlaves(esp_now_peer_info_t *slaves_devices)
 {
+  //Sting para debug
+  char info[100];
+
   // Limpiamos el numero de dispositivos
-  SlaveCnt = 0;
+  int contador_slave = 0;
 
   // Escaneo los resultados
   int8_t scanResults = WiFi.scanNetworks();
 
-  // reset slaves
-  
-  memset(slaves_devices, 0, sizeof(slaves_devices));
-  SlaveCnt = 0;
-
-  Serial.println("");
   if (scanResults == 0)
   {
-    Serial.println("No WiFi devices in AP Mode found");
+    log_i("No WiFi devices in AP Mode found");
   }
   else
   {
@@ -226,17 +237,9 @@ void AsyncEspNow::ScanForSlave()
       // Check if the current device starts with `Slave`
       if (SSID.indexOf("ESP-") == 0)
       {
-        // SSID of interest
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.print(SSID);
-        Serial.print(" [");
-        Serial.print(BSSIDstr);
-        Serial.print("]");
-        Serial.print(" (");
-        Serial.print(RSSI);
-        Serial.print(")");
-        Serial.println("");
+        sprintf(info,"%d: %s [%s] (%d)",i+1,SSID.c_str(),BSSIDstr.c_str(),(int)RSSI);
+        log_i("%s",info);
+
         // Get BSSID => Mac Address of the Slave
         int mac[6];
 
@@ -244,42 +247,62 @@ void AsyncEspNow::ScanForSlave()
         {
           for (int ii = 0; ii < 6; ++ii)
           {
-            slaves_devices[SlaveCnt].peer_addr[ii] = (uint8_t)mac[ii];
+            slaves_devices[contador_slave].peer_addr[ii] = (uint8_t)mac[ii];
           }
         }
         // slaves[SlaveCnt].channel = CHANNEL; // pick a channel
-        slaves_devices[SlaveCnt].encrypt = 0; // no encryption
-        SlaveCnt++;
+        slaves_devices[contador_slave].encrypt = 0; // no encryption
+        contador_slave++;
       }
     }
   }
 
-  if (SlaveCnt > 0)
+  if (contador_slave > 0)
   {
-    Serial.print(SlaveCnt);
-    Serial.println(" Slave(s) found, processing..");
+    log_i("%d Slave(s) found, processing.",contador_slave);
   }
   else
   {
-    Serial.println("No Slave Found, trying again.");
+    log_i("No Slave Found, trying again.");
   }
 
   // clean up ram
   WiFi.scanDelete();
+
+  return contador_slave;
 }
 
-uint16_t AsyncEspNow::sentAllData(String message)
-{
-  // Escaneo los dispositivos
-  ScanForSlave();
 
-  // Monitoreamos los dispositivos
+int AsyncEspNow::sendMessageAll(String message)
+{
+  int status_devices = 0b0000000000000000;
+
+  //Creamos el un array
+  esp_now_peer_info_t slaves_devices[MAX_SLAVES] = {};
+
+  //Realizo un scaneo de todos los dispositivos
+  int SlaveCnt = ScanForSlaves(slaves_devices);
+
+  //Si tenemos mas de un esclavo, procedemos a enviar los datos
   if (SlaveCnt > 0)
   {
+    //Para cada esclavo realizamos este proceso
+    NowMessage NowMessageSend;
+    bool status_send;
     for (int i = 0; i < SlaveCnt; i++)
     {
-      //Send data all Devices
-      sentData(slaves_devices[i].peer_addr,message.c_str());
+      NowMessageSend.now_peer = slaves_devices[i];
+      NowMessageSend.message = message;
+
+      //Realizamos el envio
+      status_send = sentData(NowMessageSend);
+
+      //Status
+      status_devices = status_devices + pow(2,i);
+
     }
   }
+
+  return status_devices;
+
 }

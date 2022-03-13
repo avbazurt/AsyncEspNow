@@ -8,6 +8,9 @@
 #define NUMSLAVES 20
 #define CHANNEL 3
 
+#define MAX_SLAVES 16
+
+
 struct structReciveData
 {
   uint8_t macAddr;
@@ -75,14 +78,9 @@ public:
   /*---------------------------------------------- SCANER    ---------------------------------------------*/
   /*------------------------------------------------------------------------------------------------------*/
 
-  // Data to Scaner
-  int SlaveCnt = 0;
-  esp_now_peer_info_t slaves_devices[NUMSLAVES] = {};
-
   // Funciones por Escaner
-  void ScanForSlave();
-
-  void sentAllData(String msg);
+  int ScanForSlaves(esp_now_peer_info_t *slaves_devices);
+  int sendMessageAll(String msg);
 
   /*------------------------------------------------------------------------------------------------------*/
   /*---------------------------------------------- CALLCBACK    ---------------------------------------------*/
