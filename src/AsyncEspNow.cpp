@@ -17,7 +17,7 @@ struct ESPNOW_mensaje
 // Semaphoro
 SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting(1, 0);
 
-AsyncEspNow::AsyncEspNow(String name)
+AsyncEspNowClass::AsyncEspNowClass(String name)
 {
   // Guardo el nombre a utilizar
   nameGroup = name;
@@ -48,7 +48,7 @@ void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 /*---------------------------------------------- SEND DATA ---------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
 
-void AsyncEspNow::sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
+void AsyncEspNowClass::sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
 {
   // MacStr
   char macStr[18];
@@ -65,7 +65,7 @@ void AsyncEspNow::sentCallback(const uint8_t *macAddr, esp_now_send_status_t sta
   xSemaphoreGive(SendDataSemaphore);
 }
 
-void AsyncEspNow::_task_sendData(void *pvParameters)
+void AsyncEspNowClass::_task_sendData(void *pvParameters)
 {
   // Variable que toma la estructura
   NowMessage *NowMessageSend = (NowMessage *)pvParameters;
@@ -80,7 +80,7 @@ void AsyncEspNow::_task_sendData(void *pvParameters)
 }
 
 
-bool AsyncEspNow::sentData(NowMessage NowMessageSend)
+bool AsyncEspNowClass::sentData(NowMessage NowMessageSend)
 {
   // Iniciamos la tarea
   xTaskCreatePinnedToCore(
@@ -102,7 +102,7 @@ bool AsyncEspNow::sentData(NowMessage NowMessageSend)
 }
 
 
-bool AsyncEspNow::sendMessage(uint8_t peerAddress[], const String &message)
+bool AsyncEspNowClass::sendMessage(uint8_t peerAddress[], const String &message)
 {
   // Creo una structura
   NowMessage NowMessageSend;
@@ -129,7 +129,7 @@ bool AsyncEspNow::sendMessage(uint8_t peerAddress[], const String &message)
 /*---------------------------------------------- RECIVE DATA ---------------------------------------------*/
 /*-------------------------------------------------------------------------------------------------------*/
 
-void AsyncEspNow::receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
+void AsyncEspNowClass::receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {
   // only allow a maximum of 250 characters in the message + a null terminating byte
   char buffer[ESP_NOW_MAX_DATA_LEN + 1];
@@ -151,7 +151,7 @@ void AsyncEspNow::receiveCallback(const uint8_t *macAddr, const uint8_t *data, i
       CORE_ESP);        // Core where the task should run
 }
 
-void AsyncEspNow::_task_reciveData(void *pvParameters)
+void AsyncEspNowClass::_task_reciveData(void *pvParameters)
 {
   // debug log the message to the serial port
   ESPNOW_mensaje *mensaje = (ESPNOW_mensaje *)pvParameters;
@@ -168,7 +168,7 @@ void AsyncEspNow::_task_reciveData(void *pvParameters)
   vTaskDelete(NULL);
 }
 
-void AsyncEspNow::setReciveCallback(void (*puntero)(char MAC[], char text[]))
+void AsyncEspNowClass::setReciveCallback(void (*puntero)(char MAC[], char text[]))
 {
   punteroCallback = puntero;
 }
@@ -177,7 +177,7 @@ void AsyncEspNow::setReciveCallback(void (*puntero)(char MAC[], char text[]))
 /*---------------------------------------------- GENERAL ESP ---------------------------------------------*/
 /*-------------------------------------------------------------------------------------------------------*/
 
-void AsyncEspNow::begin()
+void AsyncEspNowClass::begin()
 {
   if (esp_now_init() == ESP_OK)
   {

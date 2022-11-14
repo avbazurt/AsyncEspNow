@@ -18,7 +18,7 @@ struct structReciveData
   int dataLen;
 };
 
-class AsyncEspNow
+class AsyncEspNowClass
 {
 private:
   // Variable guardar name
