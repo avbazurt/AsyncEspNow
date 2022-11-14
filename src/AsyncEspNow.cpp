@@ -1,17 +1,5 @@
 #include "AsyncEspNow.h"
-
-#if CONFIG_IDF_TARGET_ESP32
-#define CORE_ESP 0
-
-#elif CONFIG_IDF_TARGET_ESP32S2
-#define CORE_ESP 1
-
-#else
-#error CORE no disponible para board objetivo!
-#endif
-
-
-
+#include "EspConfig.h"
 
 // Puntero Callback
 void (*punteroCallback)(char MAC[], char text[]);
