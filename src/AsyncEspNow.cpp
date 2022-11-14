@@ -2,10 +2,8 @@
 #include "EspConfig.h"
 
 // Puntero Callback
-void (*punteroCallback)(char MAC[], char text[]);
+void (*onMessageCallback)(uint8_t MAC[], char text[]);
 bool status_send;
-
-// Semaphoro
 
 // Estructura de los mensajes
 struct ESPNOW_mensaje
@@ -17,31 +15,79 @@ struct ESPNOW_mensaje
 // Semaphoro
 SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting(1, 0);
 
-AsyncEspNowClass::AsyncEspNowClass(String name)
+String formatMacAddress(uint8_t MAC[])
 {
-  // Guardo el nombre a utilizar
-  nameGroup = name;
+  char macStr[18];
+  // formatMacAddress
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           MAC[0], MAC[1], MAC[2], MAC[3], MAC[4], MAC[5]);
 
+  return String(macStr);
+}
+
+/*-------------------------------------------------------------------------------------------------------*/
+/*---------------------------------------------- GENERAL ESP ---------------------------------------------*/
+/*-------------------------------------------------------------------------------------------------------*/
+
+void AsyncEspNowClass::_configWifiMode()
+{
+  // Configuro el Modo WiFi
   WiFi.mode(WIFI_AP_STA);
 
-  String MAC = WiFi.macAddress();
-  log_i("My MAC Address is: %s", MAC.c_str());
-  status_send = false;
+  String MAC = getMacAddress();
+  log_d("My MAC Address is: %s", MAC.c_str());
 
   // Configuramos el nombre de la red
   MAC.replace(":", "");
 
   String name_mac = "{NAME}-{MAC}";
-
-  name_mac.replace("{NAME}", name);
+  name_mac.replace("{NAME}", "ESP");
   name_mac.replace("{MAC}", MAC);
 
   // Creamos la red
-  WiFi.softAP(name_mac.c_str());
+  WiFi.softAP(name_mac.c_str(), nullptr, 1, true, 4);
 }
 
-void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
+String AsyncEspNowClass::getMacAddress()
 {
+  return WiFi.macAddress();
+}
+
+void AsyncEspNowClass::begin()
+{
+  // Iniciamos el WiFi
+  _configWifiMode();
+
+  if (esp_now_init() == ESP_OK)
+  {
+    log_i("ESPNow Init Success");
+  }
+  else
+  {
+    log_e("ESPNow Init Failed");
+    delay(3000);
+    ESP.restart();
+  }
+
+  esp_now_register_send_cb(this->sentCallback);
+  esp_now_register_recv_cb(this->_receiveCallback);
+}
+
+void _uint8copy(uint8_t *mac, const uint8_t *macAddr)
+{
+  for (int i = 0; i < 6; i++)
+  {
+    mac[i] = macAddr[i];
+  }
+}
+
+/*------------------------------------------------------------------------------------------------------*/
+/*------------------------------------- CALLBACKS ASYNC ESP  -------------------------------------------*/
+/*------------------------------------------------------------------------------------------------------*/
+
+void AsyncEspNowClass::onMessage(void (*puntero)(uint8_t MAC[], char text[]))
+{
+  onMessageCallback = puntero;
 }
 
 /*------------------------------------------------------------------------------------------------------*/
@@ -79,7 +125,6 @@ void AsyncEspNowClass::_task_sendData(void *pvParameters)
   vTaskDelay(750); // one tick delay (15ms) in between reads for stability
 }
 
-
 bool AsyncEspNowClass::sentData(NowMessage NowMessageSend)
 {
   // Iniciamos la tarea
@@ -96,11 +141,10 @@ bool AsyncEspNowClass::sentData(NowMessage NowMessageSend)
   xSemaphoreTake(SendDataSemaphore, portMAX_DELAY);
   log_d("Se libera el semaphore");
 
-  //Eliminamos la tarea
+  // Eliminamos la tarea
   vTaskDelete(TaskHandSendData);
   return status_send;
 }
-
 
 bool AsyncEspNowClass::sendMessage(uint8_t peerAddress[], const String &message)
 {
@@ -123,73 +167,64 @@ bool AsyncEspNowClass::sendMessage(uint8_t peerAddress[], const String &message)
   return status_send;
 }
 
+/*------------------------------------------------------------------------------------------------------*/
+/*------------------------------------------ SLAVE FUNTION   -------------------------------------------*/
+/*------------------------------------------------------------------------------------------------------*/
 
+// Estructura de los mensajes
+struct espnow_message
+{
+  uint8_t *_address;
+  char *_msg;
+  TaskHandle_t TaskHandle;
+};
 
-/*-------------------------------------------------------------------------------------------------------*/
-/*---------------------------------------------- RECIVE DATA ---------------------------------------------*/
-/*-------------------------------------------------------------------------------------------------------*/
-
-void AsyncEspNowClass::receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
+void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {
   // only allow a maximum of 250 characters in the message + a null terminating byte
   char buffer[ESP_NOW_MAX_DATA_LEN + 1];
   int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
+
   strncpy(buffer, (const char *)data, msgLen);
   // make sure we are null terminated
   buffer[msgLen] = 0;
-  // format the mac address
 
-  ESPNOW_mensaje msg = {macAddr, buffer};
+  // Copiamos la MAC
+  uint8_t MAC[6];
+  _uint8copy(MAC, macAddr);
+
+  // Creo el TaskHandle
+  TaskHandle_t TaskHandReciveData = NULL;
+
+  // format the mac address
+  static espnow_message msg = {MAC, buffer, TaskHandReciveData};
 
   xTaskCreatePinnedToCore(
-      _task_reciveData, // Function to implement the task
-      "httpsTask",      // Name of the task
-      5000,             // Stack size in words
-      (void *)&msg,     // Task input parameter
-      2,                // Priority of the task
-      NULL,             // Task handle.
-      CORE_ESP);        // Core where the task should run
+      _task_reciveData,  // Function to implement the task
+      "task_reciveData", // Name of the task
+      2500,              // Stack size in words
+      (void *)&msg,      // Task input parameter
+      2,                 // Priority of the task
+      NULL,              // Task handle.
+      CORE_ESP);         // Core where the task should run
 }
 
 void AsyncEspNowClass::_task_reciveData(void *pvParameters)
 {
+  // Get parameters
+  espnow_message *mensaje = (espnow_message *)pvParameters;
+
   // debug log the message to the serial port
-  ESPNOW_mensaje *mensaje = (ESPNOW_mensaje *)pvParameters;
+  //log_d("Received message from: %s - %s", formatMacAddress(mensaje->_address).c_str(), mensaje->_msg);
 
-  // Le damos formato a nuestra MAC
-  char macStr[18];
-  snprintf(macStr, 18, "%02x:%02x:%02x:%02x:%02x:%02x", mensaje->_address[0], mensaje->_address[1], mensaje->_address[2], mensaje->_address[3], mensaje->_address[4], mensaje->_address[5]);
-
-  // Enviamos la informacion all Callback del usuario
-  punteroCallback(macStr, mensaje->msg);
-  vTaskDelay(100); // one tick delay (15ms) in between reads for stability
+  vTaskDelay(50); // one tick delay (15ms) in between reads for stability
+  if (onMessageCallback)
+    onMessageCallback(mensaje->_address, mensaje->_msg);
+  vTaskDelay(50); // one tick delay (15ms) in between reads for stability
 
   // Anulamos La tarea
-  vTaskDelete(NULL);
+  vTaskDelete(mensaje->TaskHandle);
 }
 
-void AsyncEspNowClass::setReciveCallback(void (*puntero)(char MAC[], char text[]))
-{
-  punteroCallback = puntero;
-}
-
-/*-------------------------------------------------------------------------------------------------------*/
-/*---------------------------------------------- GENERAL ESP ---------------------------------------------*/
-/*-------------------------------------------------------------------------------------------------------*/
-
-void AsyncEspNowClass::begin()
-{
-  if (esp_now_init() == ESP_OK)
-  {
-    log_i("ESPNow Init Success");
-  }
-  else
-  {
-    log_e("ESPNow Init Failed");
-    delay(3000);
-    ESP.restart();
-  }
-
-  esp_now_register_send_cb(this->sentCallback);
-  esp_now_register_recv_cb(this->receiveCallback);
-}
+//
+AsyncEspNowClass AsyncEspNow;

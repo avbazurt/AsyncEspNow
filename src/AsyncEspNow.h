@@ -10,13 +10,14 @@
 
 #define MAX_SLAVES 16
 
-
 struct structReciveData
 {
   uint8_t macAddr;
   uint8_t data;
   int dataLen;
 };
+
+String formatMacAddress(uint8_t MAC[]);
 
 class AsyncEspNowClass
 {
@@ -35,37 +36,29 @@ private:
   // FUncion interna para enviar Data por ESPnow
   bool sentData(NowMessage NowMessageSend);
 
-
   // Variables a utilizar en Recive Data
   uint8_t _peerAddressRecive[6];
   String _message_recive;
 
   static String txt;
 
-
   // Timer para control de las tareas
   TaskHandle_t TaskHandSendData = NULL;
-  TaskHandle_t TaskHandReciData = NULL;
 
   // Callbacks de timers - NO LLAMAR DIRECTAMENTE
   static void _task_sendData(void *pvParameters);
   static void _task_reciveData(void *pvParameters);
 
-
+  void _configWifiMode();
+  friend void _uint8copy(uint8_t *mac, const uint8_t *macAddr);
 
 public:
-  /*------------------------------------------------------------------------------------------------------*/
-  /*---------------------------------------------- -GENERAL- ---------------------------------------------*/
-  /*------------------------------------------------------------------------------------------------------*/
-
-  // Constructor
-  AsyncEspNow(String name = "ESP");
-
   // Funcion para iniciar ESPnow
   void begin();
+  String getMacAddress();
 
-  // Funcion para designar la funcion CallBack
-  static void setReciveCallback(void (*puntero)(char MAC[], char text[]));
+  // Callbacks
+  static void onMessage(void (*puntero)(uint8_t MAC[], char text[]));
 
   /*------------------------------------------------------------------------------------------------------*/
   /*---------------------------------------------- SEND DATA ---------------------------------------------*/
@@ -74,13 +67,14 @@ public:
   // Funcion para enviar Mensaje por ESPnow
   bool sendMessage(uint8_t peerAddress[], const String &message);
 
-
   /*------------------------------------------------------------------------------------------------------*/
   /*---------------------------------------------- CALLCBACK    ---------------------------------------------*/
   /*------------------------------------------------------------------------------------------------------*/
-  friend void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength);
+  // friend void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength);
 
-  static void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
+  static void _receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
 
   static void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
 };
+
+extern AsyncEspNowClass AsyncEspNow;
