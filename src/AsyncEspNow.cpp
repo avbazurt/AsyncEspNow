@@ -2,7 +2,7 @@
 #include "EspConfig.h"
 
 // Puntero Callback
-void (*onMessageCallback)(uint8_t MAC[], char text[]);
+void (*onMessageCallback)(const uint8_t *address, const char *msg);
 bool status_send;
 
 // Estructura de los mensajes
@@ -15,7 +15,8 @@ struct ESPNOW_mensaje
 // Semaphoro
 SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting(1, 0);
 
-String formatMacAddress(uint8_t MAC[])
+
+String formatMacAddress(const uint8_t *MAC)
 {
   char macStr[18];
   // formatMacAddress
@@ -85,7 +86,7 @@ void _uint8copy(uint8_t *mac, const uint8_t *macAddr)
 /*------------------------------------- CALLBACKS ASYNC ESP  -------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
 
-void AsyncEspNowClass::onMessage(void (*puntero)(uint8_t MAC[], char text[]))
+void AsyncEspNowClass::onMessage(void (*puntero)(const uint8_t *address, const char *msg))
 {
   onMessageCallback = puntero;
 }
@@ -174,56 +175,68 @@ bool AsyncEspNowClass::sendMessage(uint8_t peerAddress[], const String &message)
 // Estructura de los mensajes
 struct espnow_message
 {
-  uint8_t *_address;
-  char *_msg;
+  const uint8_t *_address;
+  const char *_msg;
   TaskHandle_t TaskHandle;
 };
 
+// Semaphoro
+SemaphoreHandle_t _receiveSemaphore = xSemaphoreCreateMutex();
+
 void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {
-  // only allow a maximum of 250 characters in the message + a null terminating byte
-  char buffer[ESP_NOW_MAX_DATA_LEN + 1];
-  int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
+  if (xSemaphoreTake(_receiveSemaphore, pdMS_TO_TICKS(1000)) == pdTRUE)
+  {
+    // only allow a maximum of 250 characters in the message + a null terminating byte
+    char buffer[ESP_NOW_MAX_DATA_LEN + 1];
+    int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
 
-  strncpy(buffer, (const char *)data, msgLen);
-  // make sure we are null terminated
-  buffer[msgLen] = 0;
+    strncpy(buffer, (const char *)data, msgLen);
+    // make sure we are null terminated
+    buffer[msgLen] = 0;
 
-  // Copiamos la MAC
-  uint8_t MAC[6];
-  _uint8copy(MAC, macAddr);
+    // Creo el TaskHandle
+    TaskHandle_t TaskHandReciveData = NULL;
 
-  // Creo el TaskHandle
-  TaskHandle_t TaskHandReciveData = NULL;
+    // format the mac address
+    espnow_message msg = {macAddr, buffer, TaskHandReciveData};
 
-  // format the mac address
-  static espnow_message msg = {MAC, buffer, TaskHandReciveData};
+    xTaskCreatePinnedToCore(
+        _task_reciveData,  // Function to implement the task
+        "task_reciveData", // Name of the task
+        3500,              // Stack size in words
+        (void *)&msg,      // Task input parameter
+        0,                 // Priority of the task
+        NULL,              // Task handle.
+        CORE_ESP);         // Core where the task should run
 
-  xTaskCreatePinnedToCore(
-      _task_reciveData,  // Function to implement the task
-      "task_reciveData", // Name of the task
-      2500,              // Stack size in words
-      (void *)&msg,      // Task input parameter
-      2,                 // Priority of the task
-      NULL,              // Task handle.
-      CORE_ESP);         // Core where the task should run
+    // one tick delay (10ms) in between reads for stability
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // Liberamos el semaphore
+    xSemaphoreGive(_receiveSemaphore);
+  }
 }
 
 void AsyncEspNowClass::_task_reciveData(void *pvParameters)
 {
   // Get parameters
-  espnow_message *mensaje = (espnow_message *)pvParameters;
+  espnow_message *_data = (espnow_message *)pvParameters;
 
-  // debug log the message to the serial port
-  //log_d("Received message from: %s - %s", formatMacAddress(mensaje->_address).c_str(), mensaje->_msg);
+  // Copiamos la MAC
+  uint8_t MAC[6];
+  _uint8copy(MAC, _data->_address);
 
-  vTaskDelay(50); // one tick delay (15ms) in between reads for stability
+  // Copiamos el mensaje
+  String text = String(_data->_msg);
+
+  vTaskDelay(pdMS_TO_TICKS(10)); // one tick delay (10ms) in between reads for stability
   if (onMessageCallback)
-    onMessageCallback(mensaje->_address, mensaje->_msg);
-  vTaskDelay(50); // one tick delay (15ms) in between reads for stability
+    onMessageCallback(MAC, text.c_str());
+  vTaskDelay(pdMS_TO_TICKS(10)); // one tick delay (10ms) in between reads for stability
 
   // Anulamos La tarea
-  vTaskDelete(mensaje->TaskHandle);
+  vTaskDelete(_data->TaskHandle);
 }
 
 //

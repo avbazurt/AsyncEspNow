@@ -17,7 +17,7 @@ struct structReciveData
   int dataLen;
 };
 
-String formatMacAddress(uint8_t MAC[]);
+String formatMacAddress(const uint8_t *MAC);
 
 class AsyncEspNowClass
 {
@@ -58,7 +58,7 @@ public:
   String getMacAddress();
 
   // Callbacks
-  static void onMessage(void (*puntero)(uint8_t MAC[], char text[]));
+  static void onMessage(void (*puntero)(const uint8_t *address, const char *msg));
 
   /*------------------------------------------------------------------------------------------------------*/
   /*---------------------------------------------- SEND DATA ---------------------------------------------*/
