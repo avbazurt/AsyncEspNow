@@ -200,7 +200,7 @@ void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *d
         "onMessage",     // Name of the task
         3500,            // Stack size in words
         (void *)&msg,    // Task input parameter
-        0,               // Priority of the task
+        3,               // Priority of the task
         NULL,           // Task handle.
         CORE_ESP);      // Core where the task should run
 
