@@ -2,7 +2,6 @@
 #include "EspConfig.h"
 
 // Puntero Callback
-void (*onMessageCallback)(const uint8_t *address, const char *msg);
 bool status_send;
 
 // Estructura de los mensajes
@@ -14,7 +13,6 @@ struct ESPNOW_mensaje
 
 // Semaphoro
 SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting(1, 0);
-
 
 String formatMacAddress(const uint8_t *MAC)
 {
@@ -85,7 +83,7 @@ void _uint8copy(uint8_t *mac, const uint8_t *macAddr)
 /*------------------------------------------------------------------------------------------------------*/
 /*------------------------------------- CALLBACKS ASYNC ESP  -------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
-
+void (*onMessageCallback)(const uint8_t *address, const char *msg);
 void AsyncEspNowClass::onMessage(void (*puntero)(const uint8_t *address, const char *msg))
 {
   onMessageCallback = puntero;
@@ -177,7 +175,6 @@ struct espnow_message
 {
   const uint8_t *_address;
   const char *_msg;
-  TaskHandle_t TaskHandle;
 };
 
 // Semaphoro
@@ -185,7 +182,7 @@ SemaphoreHandle_t _receiveSemaphore = xSemaphoreCreateMutex();
 
 void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {
-  if (xSemaphoreTake(_receiveSemaphore, pdMS_TO_TICKS(1000)) == pdTRUE)
+  if (xSemaphoreTake(_receiveSemaphore, pdMS_TO_TICKS(2000)) == pdTRUE)
   {
     // only allow a maximum of 250 characters in the message + a null terminating byte
     char buffer[ESP_NOW_MAX_DATA_LEN + 1];
@@ -195,20 +192,17 @@ void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *d
     // make sure we are null terminated
     buffer[msgLen] = 0;
 
-    // Creo el TaskHandle
-    TaskHandle_t TaskHandReciveData = NULL;
-
     // format the mac address
-    espnow_message msg = {macAddr, buffer, TaskHandReciveData};
+    espnow_message msg = {macAddr, buffer};
 
     xTaskCreatePinnedToCore(
-        _task_reciveData,  // Function to implement the task
-        "task_reciveData", // Name of the task
-        3500,              // Stack size in words
-        (void *)&msg,      // Task input parameter
-        0,                 // Priority of the task
-        NULL,              // Task handle.
-        CORE_ESP);         // Core where the task should run
+        _task_onMessage, // Function to implement the task
+        "onMessage",     // Name of the task
+        3500,            // Stack size in words
+        (void *)&msg,    // Task input parameter
+        0,               // Priority of the task
+        NULL,           // Task handle.
+        CORE_ESP);      // Core where the task should run
 
     // one tick delay (10ms) in between reads for stability
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -218,7 +212,7 @@ void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *d
   }
 }
 
-void AsyncEspNowClass::_task_reciveData(void *pvParameters)
+void AsyncEspNowClass::_task_onMessage(void *pvParameters)
 {
   // Get parameters
   espnow_message *_data = (espnow_message *)pvParameters;
@@ -229,14 +223,13 @@ void AsyncEspNowClass::_task_reciveData(void *pvParameters)
 
   // Copiamos el mensaje
   String text = String(_data->_msg);
-
-  vTaskDelay(pdMS_TO_TICKS(10)); // one tick delay (10ms) in between reads for stability
+  
   if (onMessageCallback)
     onMessageCallback(MAC, text.c_str());
   vTaskDelay(pdMS_TO_TICKS(10)); // one tick delay (10ms) in between reads for stability
 
-  // Anulamos La tarea
-  vTaskDelete(_data->TaskHandle);
+  vTaskDelete(NULL);
+  Serial.println("Esto no deberia aparecer en el serial");
 }
 
 //

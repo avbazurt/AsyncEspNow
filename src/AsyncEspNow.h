@@ -45,9 +45,13 @@ private:
   // Timer para control de las tareas
   TaskHandle_t TaskHandSendData = NULL;
 
-  // Callbacks de timers - NO LLAMAR DIRECTAMENTE
+  // Callbacks de async funciones - NO LLAMAR DIRECTAMENTE
   static void _task_sendData(void *pvParameters);
-  static void _task_reciveData(void *pvParameters);
+  static void _task_onMessage(void *pvParameters);
+
+  // Callbacks de ESP-NOW - NO LLAMAR DIRECTAMENTE
+  static void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
+  static void _receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
 
   void _configWifiMode();
   friend void _uint8copy(uint8_t *mac, const uint8_t *macAddr);
@@ -72,9 +76,7 @@ public:
   /*------------------------------------------------------------------------------------------------------*/
   // friend void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength);
 
-  static void _receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
 
-  static void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
 };
 
 extern AsyncEspNowClass AsyncEspNow;
