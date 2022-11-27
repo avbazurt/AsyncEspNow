@@ -1,5 +1,6 @@
 #include "AsyncEspNow.h"
 #include "EspConfig.h"
+#include <esp_wifi.h> //NEED THIS TO COMPILE
 
 // Puntero Callback
 bool status_send;
@@ -28,8 +29,23 @@ String formatMacAddress(const uint8_t *MAC)
 /*---------------------------------------------- GENERAL ESP ---------------------------------------------*/
 /*-------------------------------------------------------------------------------------------------------*/
 
+AsyncEspNowClass::AsyncEspNowClass()
+{
+}
+
 void AsyncEspNowClass::_configWifiMode()
 {
+  // Get WiFi Mode
+  wifi_mode_t _mode = WiFi.getMode();
+  if (_mode != WIFI_MODE_NULL)
+  {
+    return;
+  }
+
+  // Config WiFi Mode
+  WiFi.mode(WIFI_AP_STA);
+
+  /*
   // Configuro el Modo WiFi
   WiFi.mode(WIFI_AP_STA);
 
@@ -45,6 +61,7 @@ void AsyncEspNowClass::_configWifiMode()
 
   // Creamos la red
   WiFi.softAP(name_mac.c_str(), nullptr, 1, true, 4);
+  */
 }
 
 String AsyncEspNowClass::getMacAddress()
@@ -52,14 +69,14 @@ String AsyncEspNowClass::getMacAddress()
   return WiFi.macAddress();
 }
 
-void AsyncEspNowClass::begin()
+void AsyncEspNowClass::_beginEspNow()
 {
-  // Iniciamos el WiFi
   _configWifiMode();
-
   if (esp_now_init() == ESP_OK)
   {
     log_i("ESPNow Init Success");
+    String MAC = getMacAddress();
+    log_d("My MAC Address is: %s", MAC.c_str());
   }
   else
   {
@@ -70,6 +87,68 @@ void AsyncEspNowClass::begin()
 
   esp_now_register_send_cb(this->sentCallback);
   esp_now_register_recv_cb(this->_receiveCallback);
+}
+
+void AsyncEspNowClass::begin()
+{
+  _beginEspNow();
+}
+
+void AsyncEspNowClass::_endEspNow()
+{
+  if (esp_now_deinit() == ESP_OK)
+  {
+    log_i("ESPNow Denit Success");
+  }
+  else
+  {
+    log_e("ESPNow Denit Failed");
+  }
+}
+
+void AsyncEspNowClass::end()
+{
+  _endEspNow();
+}
+
+void AsyncEspNowClass::_changeMAC(const uint8_t *customMac)
+{
+  _configWifiMode();
+  esp_err_t esp_status = esp_wifi_set_mac(WIFI_IF_STA, &customMac[0]);
+
+  // Get MAC
+  String MAC = getMacAddress();
+
+  switch (esp_status)
+  {
+  case ESP_OK:
+    log_d("Change MAC successful");
+    log_d("New MAC Address is: %s", MAC.c_str());
+    break;
+  case ESP_ERR_WIFI_NOT_INIT:
+    log_e("Change MAC Fail: WiFi is not initialized by esp_wifi_init");
+    break;
+  case ESP_ERR_INVALID_ARG:
+    log_e("Change MAC Fail: Invalid argument");
+    break;
+  case ESP_ERR_WIFI_IF:
+    log_e("Change MAC Fail: Invalid interface");
+    break;
+  case ESP_ERR_WIFI_MAC:
+    log_e("Change MAC Fail: Invalid mac address");
+    break;
+  case ESP_ERR_WIFI_MODE:
+    log_e("Change MAC Fail: WiFi mode is wrong");
+    break;
+  default:
+    log_e("Change MAC Fail: UnKnown");
+    break;
+  }
+}
+
+void AsyncEspNowClass::setAddress(uint8_t *customMac)
+{
+  _changeMAC(customMac);
 }
 
 void _uint8copy(uint8_t *mac, const uint8_t *macAddr)
@@ -201,8 +280,8 @@ void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *d
         3500,            // Stack size in words
         (void *)&msg,    // Task input parameter
         3,               // Priority of the task
-        NULL,           // Task handle.
-        CORE_ESP);      // Core where the task should run
+        NULL,            // Task handle.
+        CORE_ESP);       // Core where the task should run
 
     // one tick delay (10ms) in between reads for stability
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -223,7 +302,7 @@ void AsyncEspNowClass::_task_onMessage(void *pvParameters)
 
   // Copiamos el mensaje
   String text = String(_data->_msg);
-  
+
   if (onMessageCallback)
     onMessageCallback(MAC, text.c_str());
   vTaskDelay(pdMS_TO_TICKS(10)); // one tick delay (10ms) in between reads for stability
@@ -233,4 +312,3 @@ void AsyncEspNowClass::_task_onMessage(void *pvParameters)
 }
 
 //
-AsyncEspNowClass AsyncEspNow;

@@ -56,9 +56,20 @@ private:
   void _configWifiMode();
   friend void _uint8copy(uint8_t *mac, const uint8_t *macAddr);
 
+  void _beginEspNow();
+  void _endEspNow();
+  void _changeMAC(const uint8_t *customMac);
+
 public:
+  // Constructor
+  AsyncEspNowClass();
+
   // Funcion para iniciar ESPnow
   void begin();
+  void end();
+
+  void setAddress(uint8_t *customMac);
+
   String getMacAddress();
 
   // Callbacks
@@ -75,8 +86,6 @@ public:
   /*---------------------------------------------- CALLCBACK    ---------------------------------------------*/
   /*------------------------------------------------------------------------------------------------------*/
   // friend void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength);
-
-
 };
 
-extern AsyncEspNowClass AsyncEspNow;
+// extern AsyncEspNowClass AsyncEspNow();
