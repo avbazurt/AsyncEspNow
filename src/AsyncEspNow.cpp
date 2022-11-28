@@ -168,81 +168,77 @@ void AsyncEspNowClass::onMessage(void (*puntero)(const uint8_t *address, const c
   onMessageCallback = puntero;
 }
 
+void (*onSendCallback)(const uint8_t *address, bool status);
+void AsyncEspNowClass::onSend(void (*puntero)(const uint8_t *address, bool status))
+{
+  onSendCallback = puntero;
+}
+
 /*------------------------------------------------------------------------------------------------------*/
 /*---------------------------------------------- SEND DATA ---------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
 
+SemaphoreHandle_t _sendSemaphore = xSemaphoreCreateMutex();
+
 void AsyncEspNowClass::sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
 {
-  // MacStr
-  char macStr[18];
+  // Copiamos la MAC
+  uint8_t MAC[6];
+  _uint8copy(MAC, macAddr);
 
-  // formatMacAddress
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-           macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
-
-  status_send = status == ESP_NOW_SEND_SUCCESS ? true : false;
-
-  log_i("Last Packet Sent to: %s", macStr);
-  log_i("Last Packet Send Status: %s", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-
-  xSemaphoreGive(SendDataSemaphore);
+  // Callback Send
+  if (onSendCallback)
+    onSendCallback(MAC, status == ESP_NOW_SEND_SUCCESS);
 }
 
-void AsyncEspNowClass::_task_sendData(void *pvParameters)
+void AsyncEspNowClass::send(uint8_t peerAddress[], uint8_t data[])
 {
-  // Variable que toma la estructura
-  NowMessage *NowMessageSend = (NowMessage *)pvParameters;
-
-  if (!esp_now_is_peer_exist(NowMessageSend->now_peer.peer_addr))
+  if (xSemaphoreTake(_sendSemaphore, pdMS_TO_TICKS(2000)) == pdTRUE)
   {
-    esp_now_add_peer(&NowMessageSend->now_peer);
+    // Create Peer Info
+    esp_now_peer_info_t slaveInfo = {};
+    memcpy(slaveInfo.peer_addr, peerAddress, 6);
+    slaveInfo.encrypt = 0;
+
+    // Add New Peer
+    if (!esp_now_is_peer_exist(slaveInfo.peer_addr))
+      esp_now_add_peer(&slaveInfo);
+
+    // Send Result
+    esp_err_t result = esp_now_send(slaveInfo.peer_addr, data, sizeof(data));
+
+    if (result == ESP_OK)
+    {
+      xSemaphoreGive(_sendSemaphore);
+      return;
+    }
+    else
+    {
+      switch (result)
+      {
+      case ESP_ERR_ESPNOW_NOT_INIT:
+        log_e("Send data Fail: ESPNOW is not initialized");
+        break;
+      case ESP_ERR_ESPNOW_ARG:
+        log_e("Send data Fail: Invalid argument");
+        break;
+      case ESP_ERR_ESPNOW_FULL:
+        log_e("Send data Fail: Peer list is full");
+        break;
+      case ESP_ERR_ESPNOW_NO_MEM:
+        log_e("Send data Fail: Out of memory");
+        break;
+      case ESP_ERR_ESPNOW_EXIST:
+        log_e("Send data Fail: Peer has existed");
+        break;
+      default:
+        log_e("Send data Fail: UnKnown");
+        break;
+      }
+      xSemaphoreGive(_sendSemaphore);
+      return;
+    }
   }
-
-  esp_err_t result = esp_now_send(NowMessageSend->now_peer.peer_addr, (const uint8_t *)NowMessageSend->message.c_str(), NowMessageSend->message.length());
-  vTaskDelay(750); // one tick delay (15ms) in between reads for stability
-}
-
-bool AsyncEspNowClass::sentData(NowMessage NowMessageSend)
-{
-  // Iniciamos la tarea
-  xTaskCreatePinnedToCore(
-      this->_task_sendData,    // Function to implement the task
-      "httpsTask",             // Name of the task
-      5000,                    // Stack size in words
-      (void *)&NowMessageSend, // Task input parameter
-      2,                       // Priority of the task
-      &TaskHandSendData,       // Task handle.
-      CORE_ESP);               // Core where the task should run
-
-  log_d("Inicia el semaphore esperando");
-  xSemaphoreTake(SendDataSemaphore, portMAX_DELAY);
-  log_d("Se libera el semaphore");
-
-  // Eliminamos la tarea
-  vTaskDelete(TaskHandSendData);
-  return status_send;
-}
-
-bool AsyncEspNowClass::sendMessage(uint8_t peerAddress[], const String &message)
-{
-  // Creo una structura
-  NowMessage NowMessageSend;
-
-  // Asigno los nuevos valores al Struct
-  for (int ii = 0; ii < 6; ++ii)
-  {
-    NowMessageSend.now_peer.peer_addr[ii] = (uint8_t)peerAddress[ii];
-  }
-  NowMessageSend.now_peer.encrypt = 0;
-
-  // Copiamos la informacion del mensaje
-  NowMessageSend.message = message;
-
-  // Enviamos la data
-  bool status_send = sentData(NowMessageSend);
-
-  return status_send;
 }
 
 /*------------------------------------------------------------------------------------------------------*/
