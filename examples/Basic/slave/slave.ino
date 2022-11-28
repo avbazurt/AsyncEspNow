@@ -1,21 +1,36 @@
 #include "AsyncEspNow.h"
 
-int lastData;
+AsyncEspNowClass AsyncEspNow;
+
+typedef struct msgData {
+  float temperature;
+  int contador;
+};
 
 // Funcion Callback
-void ReciveDataNow(const uint8_t *address, const char *msg)
+int cnt;
+void reciveDataNow(const uint8_t *address, const uint8_t *data, int dataLen)
 {
+  msgData msg;
+  memcpy(&msg, data, sizeof(msg));
+
   String mac = formatMacAddress(address);
-  String text = String(msg);
-  int period = millis() - lastData;
-  lastData = millis();
-  Serial.printf("Recive to %s, message: %s, period: %d\n", mac.c_str(), text, period);
+  Serial.printf("Recive to %s \n", mac.c_str());
+  Serial.print("Bytes received: ");
+  Serial.println(dataLen);
+  Serial.print("Temperature: ");
+  Serial.println(msg.temperature);
+  Serial.print("Contador: ");
+  Serial.println(msg.contador);
+  Serial.println("");
 }
 
 void setup()
 {
   Serial.begin(115200);
-  AsyncEspNow.onMessage(ReciveDataNow);
+  AsyncEspNow.onMessage(reciveDataNow);
+  uint8_t newAddress[] = {0xC8, 0x2B, 0x96, 0xA8, 0xF6, 0x50};
+  AsyncEspNow.setAddress(newAddress);
   AsyncEspNow.begin();
 }
 
