@@ -22,11 +22,8 @@ String formatMacAddress(const uint8_t *MAC);
 class AsyncEspNowClass
 {
 private:
-  // Callbacks de async funciones - NO LLAMAR DIRECTAMENTE
-  static void _task_onMessage(void *pvParameters);
-
   // Callbacks de ESP-NOW - NO LLAMAR DIRECTAMENTE
-  static void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
+  static void _sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
   static void _receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
 
   void _configWifiMode();
@@ -49,10 +46,10 @@ public:
   String getMacAddress();
 
   // Send Message
-  void send(uint8_t peerAddress[], uint8_t data[]);
+  void send(uint8_t peerAddress[], uint8_t *data, size_t len);
 
   // Callbacks
-  static void onMessage(void (*puntero)(const uint8_t *address, const char *msg));
+  static void onMessage(void (*puntero)(const uint8_t *macAddr, const uint8_t *data, int dataLen));
   static void onSend(void (*puntero)(const uint8_t *address, bool status));
 
 };
