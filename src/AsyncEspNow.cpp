@@ -1,19 +1,6 @@
 #include "AsyncEspNow.h"
-#include "EspConfig.h"
 #include <esp_wifi.h> //NEED THIS TO COMPILE
 
-// Puntero Callback
-bool status_send;
-
-// Estructura de los mensajes
-struct ESPNOW_mensaje
-{
-  const uint8_t *_address;
-  char *msg;
-};
-
-// Semaphoro
-SemaphoreHandle_t SendDataSemaphore = xSemaphoreCreateCounting(1, 0);
 
 String formatMacAddress(const uint8_t *MAC)
 {
@@ -31,6 +18,7 @@ String formatMacAddress(const uint8_t *MAC)
 
 AsyncEspNowClass::AsyncEspNowClass()
 {
+  _configWifiMode();
 }
 
 void AsyncEspNowClass::_configWifiMode()
@@ -89,11 +77,6 @@ void AsyncEspNowClass::_beginEspNow()
   esp_now_register_recv_cb(this->_receiveCallback);
 }
 
-void AsyncEspNowClass::begin()
-{
-  _beginEspNow();
-}
-
 void AsyncEspNowClass::_endEspNow()
 {
   if (esp_now_deinit() == ESP_OK)
@@ -104,11 +87,6 @@ void AsyncEspNowClass::_endEspNow()
   {
     log_e("ESPNow Denit Failed");
   }
-}
-
-void AsyncEspNowClass::end()
-{
-  _endEspNow();
 }
 
 void AsyncEspNowClass::_changeMAC(const uint8_t *customMac)
@@ -146,19 +124,6 @@ void AsyncEspNowClass::_changeMAC(const uint8_t *customMac)
   }
 }
 
-void AsyncEspNowClass::setAddress(uint8_t *customMac)
-{
-  _changeMAC(customMac);
-}
-
-void _uint8copy(uint8_t *mac, const uint8_t *macAddr)
-{
-  for (int i = 0; i < 6; i++)
-  {
-    mac[i] = macAddr[i];
-  }
-}
-
 /*------------------------------------------------------------------------------------------------------*/
 /*------------------------------------- CALLBACKS ASYNC ESP  -------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
@@ -182,17 +147,16 @@ SemaphoreHandle_t _sendSemaphore = xSemaphoreCreateMutex();
 
 void AsyncEspNowClass::_sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
 {
-  // Copiamos la MAC
-  uint8_t MAC[6];
-  _uint8copy(MAC, macAddr);
+  // Debug level
+  log_v("Last Packet Send Status: %s", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 
   // Callback Send
   if (onSendCallback)
-    onSendCallback(MAC, status == ESP_NOW_SEND_SUCCESS);
+    onSendCallback(macAddr, status == ESP_NOW_SEND_SUCCESS);
 }
 
 void AsyncEspNowClass::send(uint8_t peerAddress[], uint8_t *data, size_t len)
-{
+{    
   if (xSemaphoreTake(_sendSemaphore, pdMS_TO_TICKS(2000)) == pdTRUE)
   {
     // Create Peer Info
@@ -244,16 +208,6 @@ void AsyncEspNowClass::send(uint8_t peerAddress[], uint8_t *data, size_t len)
 /*------------------------------------------------------------------------------------------------------*/
 /*------------------------------------------ SLAVE FUNTION   -------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
-
-// Estructura de los mensajes
-struct espnow_message
-{
-  const uint8_t *_address;
-  const char *_msg;
-};
-
-// Semaphoro
-SemaphoreHandle_t _receiveSemaphore = xSemaphoreCreateMutex();
 
 void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {

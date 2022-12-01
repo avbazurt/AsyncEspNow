@@ -2,20 +2,12 @@
 #include "Arduino.h"
 #include <WiFi.h>
 #include <esp_now.h>
-#include <ArduinoJson.h>
 
 // Global copy of slave
 #define NUMSLAVES 20
 #define CHANNEL 3
 
 #define MAX_SLAVES 16
-
-struct structReciveData
-{
-  uint8_t macAddr;
-  uint8_t data;
-  int dataLen;
-};
 
 String formatMacAddress(const uint8_t *MAC);
 
@@ -26,11 +18,10 @@ private:
   static void _sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
   static void _receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
 
-  void _configWifiMode();
-  friend void _uint8copy(uint8_t *mac, const uint8_t *macAddr);
-
   void _beginEspNow();
   void _endEspNow();
+
+  void _configWifiMode();
   void _changeMAC(const uint8_t *customMac);
 
 public:
@@ -38,11 +29,11 @@ public:
   AsyncEspNowClass();
 
   // Funcion para iniciar ESPnow
-  void begin();
-  void end();
-  void setAddress(uint8_t *customMac);
+  void begin() { _beginEspNow(); }
+  void end() { _endEspNow(); }
 
   // Funcion General
+  void setAddress(uint8_t *customMac) { _changeMAC(customMac); }
   String getMacAddress();
 
   // Send Message
@@ -51,7 +42,6 @@ public:
   // Callbacks
   static void onMessage(void (*puntero)(const uint8_t *macAddr, const uint8_t *data, int dataLen));
   static void onSend(void (*puntero)(const uint8_t *address, bool status));
-
 };
 
 // extern AsyncEspNowClass AsyncEspNow();

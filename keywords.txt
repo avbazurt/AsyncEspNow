@@ -11,6 +11,9 @@ AsyncEspNow	KEYWORD1
 #######################################
 # Methods and Functions (KEYWORD2)
 #######################################
+onSend KEYWORD2
+onMessage KEYWORD2
+formatMacAddress KEYWORD2
 
 #######################################
 # Constants (LITERAL1)
