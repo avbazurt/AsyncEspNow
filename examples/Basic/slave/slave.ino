@@ -29,8 +29,12 @@ void setup()
 {
   Serial.begin(115200);
   AsyncEspNow.onMessage(reciveDataNow);
+
+  /* If necesary, you change MAC de slave ESP.
   uint8_t newAddress[] = {0xC8, 0x2B, 0x96, 0xA8, 0xF6, 0x50};
   AsyncEspNow.setAddress(newAddress);
+  */
+  
   AsyncEspNow.setMode(ESP_SLAVE);
 }
 
