@@ -18,7 +18,7 @@ enum ESP_NOW_ROLE
 
 String formatMacAddress(const uint8_t *MAC);
 
-class AsyncEspNowClass
+class AsyncEspNow
 {
 private:
   // Constants
@@ -36,7 +36,7 @@ private:
 
 public:
   // Constructor
-  AsyncEspNowClass();
+  AsyncEspNow();
 
   // Funcion para setear el rol ESPnow
   void setMode(ESP_NOW_ROLE role){_beginEspNow(role);}
@@ -56,4 +56,4 @@ public:
   static void onSend(void (*puntero)(const uint8_t *address, bool status));
 };
 
-// extern AsyncEspNowClass AsyncEspNow();
+// extern AsyncEspNow AsyncEspNow();

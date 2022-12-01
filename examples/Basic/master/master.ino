@@ -1,6 +1,6 @@
 #include "AsyncEspNow.h"
 
-AsyncEspNowClass AsyncEspNow;
+AsyncEspNow AsyncEspNow;
 
 typedef struct msgData {
   float temperature;

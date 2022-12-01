@@ -16,12 +16,12 @@ String formatMacAddress(const uint8_t *MAC)
 /*---------------------------------------------- GENERAL ESP ---------------------------------------------*/
 /*-------------------------------------------------------------------------------------------------------*/
 
-AsyncEspNowClass::AsyncEspNowClass()
+AsyncEspNow::AsyncEspNow()
 {
   _configWifiMode();
 }
 
-void AsyncEspNowClass::_configWifiMode()
+void AsyncEspNow::_configWifiMode()
 {
   // Get WiFi Mode
   wifi_mode_t _mode = WiFi.getMode();
@@ -52,12 +52,12 @@ void AsyncEspNowClass::_configWifiMode()
   */
 }
 
-String AsyncEspNowClass::getMacAddress()
+String AsyncEspNow::getMacAddress()
 {
   return WiFi.macAddress();
 }
 
-void AsyncEspNowClass::_beginEspNow(ESP_NOW_ROLE role)
+void AsyncEspNow::_beginEspNow(ESP_NOW_ROLE role)
 {
   _configWifiMode();
   if (esp_now_init() == ESP_OK)
@@ -77,7 +77,7 @@ void AsyncEspNowClass::_beginEspNow(ESP_NOW_ROLE role)
   esp_now_register_recv_cb(this->_receiveCallback);
 }
 
-void AsyncEspNowClass::_endEspNow()
+void AsyncEspNow::_endEspNow()
 {
   if (esp_now_deinit() == ESP_OK)
   {
@@ -89,7 +89,7 @@ void AsyncEspNowClass::_endEspNow()
   }
 }
 
-void AsyncEspNowClass::_changeMAC(const uint8_t *customMac)
+void AsyncEspNow::_changeMAC(const uint8_t *customMac)
 {
   _configWifiMode();
   esp_err_t esp_status = esp_wifi_set_mac(WIFI_IF_STA, &customMac[0]);
@@ -128,13 +128,13 @@ void AsyncEspNowClass::_changeMAC(const uint8_t *customMac)
 /*------------------------------------- CALLBACKS ASYNC ESP  -------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
 void (*onMessageCallback)(const uint8_t *macAddr, const uint8_t *data, int dataLen);
-void AsyncEspNowClass::onMessage(void (*puntero)(const uint8_t *macAddr, const uint8_t *data, int dataLen))
+void AsyncEspNow::onMessage(void (*puntero)(const uint8_t *macAddr, const uint8_t *data, int dataLen))
 {
   onMessageCallback = puntero;
 }
 
 void (*onSendCallback)(const uint8_t *address, bool status);
-void AsyncEspNowClass::onSend(void (*puntero)(const uint8_t *address, bool status))
+void AsyncEspNow::onSend(void (*puntero)(const uint8_t *address, bool status))
 {
   onSendCallback = puntero;
 }
@@ -145,7 +145,7 @@ void AsyncEspNowClass::onSend(void (*puntero)(const uint8_t *address, bool statu
 
 SemaphoreHandle_t _sendSemaphore = xSemaphoreCreateMutex();
 
-void AsyncEspNowClass::_sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
+void AsyncEspNow::_sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
 {
   // Debug level
   log_v("Last Packet Send Status: %s", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
@@ -155,7 +155,7 @@ void AsyncEspNowClass::_sentCallback(const uint8_t *macAddr, esp_now_send_status
     onSendCallback(macAddr, status == ESP_NOW_SEND_SUCCESS);
 }
 
-void AsyncEspNowClass::send(uint8_t peerAddress[], uint8_t *data, size_t len)
+void AsyncEspNow::send(uint8_t peerAddress[], uint8_t *data, size_t len)
 {    
   if (xSemaphoreTake(_sendSemaphore, pdMS_TO_TICKS(2000)) == pdTRUE)
   {
@@ -209,7 +209,7 @@ void AsyncEspNowClass::send(uint8_t peerAddress[], uint8_t *data, size_t len)
 /*------------------------------------------ SLAVE FUNTION   -------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------*/
 
-void AsyncEspNowClass::_receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
+void AsyncEspNow::_receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 {
   if (onMessageCallback)
     onMessageCallback(macAddr, data, dataLen);
