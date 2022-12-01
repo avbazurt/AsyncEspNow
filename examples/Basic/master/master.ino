@@ -20,7 +20,7 @@ void setup()
 {
   Serial.begin(115200);
   AsyncEspNow.onSend(sendDataNow);
-  AsyncEspNow.begin();
+  AsyncEspNow.setMode(ESP_MASTER);
 }
 
 void loop()

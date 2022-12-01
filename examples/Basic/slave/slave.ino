@@ -31,7 +31,7 @@ void setup()
   AsyncEspNow.onMessage(reciveDataNow);
   uint8_t newAddress[] = {0xC8, 0x2B, 0x96, 0xA8, 0xF6, 0x50};
   AsyncEspNow.setAddress(newAddress);
-  AsyncEspNow.begin();
+  AsyncEspNow.setMode(ESP_SLAVE);
 }
 
 void loop()

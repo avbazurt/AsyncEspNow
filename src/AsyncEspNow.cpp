@@ -57,14 +57,14 @@ String AsyncEspNowClass::getMacAddress()
   return WiFi.macAddress();
 }
 
-void AsyncEspNowClass::_beginEspNow()
+void AsyncEspNowClass::_beginEspNow(ESP_NOW_ROLE role)
 {
   _configWifiMode();
   if (esp_now_init() == ESP_OK)
   {
     log_i("ESPNow Init Success");
-    String MAC = getMacAddress();
-    log_d("My MAC Address is: %s", MAC.c_str());
+    log_d("My MAC Address is: %s", getMacAddress().c_str());
+    log_d("Role is : %s", _espNowRole[role].c_str());
   }
   else
   {

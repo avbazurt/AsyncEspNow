@@ -9,16 +9,26 @@
 
 #define MAX_SLAVES 16
 
+enum ESP_NOW_ROLE
+{
+  ESP_MASTER = 0,
+  ESP_SLAVE = 1,
+  ESP_COMBO = 2,
+};
+
 String formatMacAddress(const uint8_t *MAC);
 
 class AsyncEspNowClass
 {
 private:
+  // Constants
+  String _espNowRole[3] = {"MASTER", "SLAVE", "COMBO"};
+
   // Callbacks de ESP-NOW - NO LLAMAR DIRECTAMENTE
   static void _sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
   static void _receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
 
-  void _beginEspNow();
+  void _beginEspNow(ESP_NOW_ROLE role);
   void _endEspNow();
 
   void _configWifiMode();
@@ -28,9 +38,11 @@ public:
   // Constructor
   AsyncEspNowClass();
 
-  // Funcion para iniciar ESPnow
-  void begin() { _beginEspNow(); }
-  void end() { _endEspNow(); }
+  // Funcion para setear el rol ESPnow
+  void setMode(ESP_NOW_ROLE role){_beginEspNow(role);}
+
+  //void begin() { _beginEspNow(); }
+  //void end() { _endEspNow(); }
 
   // Funcion General
   void setAddress(uint8_t *customMac) { _changeMAC(customMac); }
